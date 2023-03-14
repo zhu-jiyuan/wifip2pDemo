@@ -1,0 +1,10 @@
+<resources>
+    <string name="app_name">WiFi P2P Demo</string>
+    <string name="projectTitle">wifi p2p demo</string>
+    <string name="connection_status_text">Connection Status</string>
+    <string name="onOff">WiFi On</string>
+    <string name="discover">discover</string>
+    <string name="readMsg">Message</string>
+    <string name="writeMsgHint">send message</string>
+    <string name="sendButton">send</string>
+</resources>
