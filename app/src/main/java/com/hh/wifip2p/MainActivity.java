@@ -2,17 +2,15 @@ package com.hh.wifip2p;
 
 
 
+
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.app.ActivityCompat;
-import androidx.core.content.ContextCompat;
-import android.Manifest;
 
 import android.content.BroadcastReceiver;
+import android.content.ClipboardManager;
 import android.content.Context;
 
 import android.content.IntentFilter;
-import android.content.pm.PackageManager;
 import android.net.wifi.WifiManager;
 import android.net.wifi.p2p.WifiP2pConfig;
 import android.net.wifi.p2p.WifiP2pDevice;
@@ -33,18 +31,14 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
-import java.net.ServerSocket;
 import java.net.Socket;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
 public class MainActivity<ServerC> extends AppCompatActivity {
-    private static final int REQUEST_CODE_LOCATION_PERMISSION = 1003;
+
     Log log;
     String debug_ = "wifi p2p debug";
     String debug_run = "run info";
@@ -66,11 +60,14 @@ public class MainActivity<ServerC> extends AppCompatActivity {
     String[] deviceNameArray;
     WifiP2pDevice[] devicesArray;
 
-    static final int MESSAGE_READ = 1;
 
-    ServerClass serverClass;
+
+    ServerWifi serverWifi;
     ClientClass clientClass;
     SendReceive sendReceive;
+
+    ClipboardTools clipboardTools;
+    ClipboardManager clipboardManager;
 
 
     @Override
@@ -83,22 +80,36 @@ public class MainActivity<ServerC> extends AppCompatActivity {
 
         exqListener();
 
-        test();
     }
     Handler handler = new Handler(new Handler.Callback() {
         @Override
         public boolean handleMessage(@NonNull Message msg) {
-            switch (msg.what) {
 
+            switch (MessageOptions.values()[msg.what]) {
                 case MESSAGE_READ:
-                    byte[] readBuff = (byte[]) msg.obj;
-                    String tempMsg = new String(readBuff, 0, msg.arg1);
-                    readMsg.setText(tempMsg);
                     break;
+                case MESSAGE_CLIP_STRING:{
+                    if(msg.obj!=null){
+                        String clipRead = (String)msg.obj;
+                        readMsg.setText(clipRead);
+                    }
+                    break;
+                }
+                case MESSAGE_CLIP_SET_STRING:{
+                    if(msg.obj!=null){
+                        String clipRead = (String)msg.obj;
+                        if(!clipboardTools.check(clipRead)){
+                            clipboardTools.setTxt(clipRead);
+                            readMsg.setText(clipRead);
+                        }
+                    }
+                }
+
             }
             return true;
         }
     });
+
 
 
 
@@ -129,6 +140,9 @@ public class MainActivity<ServerC> extends AppCompatActivity {
         intentFilter.addAction(WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION);
 
 
+        clipboardManager = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+
+        clipboardTools = new ClipboardTools(this,clipboardManager);
     }
 
     private void exqListener(){
@@ -186,8 +200,22 @@ public class MainActivity<ServerC> extends AppCompatActivity {
         btnSend.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                String msg = writeMsg.getText().toString();
-                sendReceive.write(msg.getBytes(StandardCharsets.UTF_8));
+                String msg = clipboardTools.getData();
+
+                if(msg!=null){
+                    Log.d(debug_run, "成功获取剪切板=> " + msg);
+                    if(!clipboardTools.check(msg)){
+                        if(sendReceive!=null) {
+                            try {
+                                sendReceive.sendMessage(msg);
+                            } catch (IOException e) {
+                                e.printStackTrace();
+                                System.out.println("sendMessage有问题");
+                            }
+                        }
+                    }
+                }
+
             }
         });
 
@@ -224,8 +252,9 @@ public class MainActivity<ServerC> extends AppCompatActivity {
 
             if(wifiP2pInfo.groupFormed && wifiP2pInfo.isGroupOwner){
                 connectionStatus.setText("Group owner.");
-                serverClass = new ServerClass();
-                serverClass.start();
+                serverWifi = new ServerWifi();
+                Thread server_t = new Thread(serverWifi);
+                server_t.start();
 
             }else if(wifiP2pInfo.groupFormed){
                 connectionStatus.setText("Client.");
@@ -235,9 +264,15 @@ public class MainActivity<ServerC> extends AppCompatActivity {
         }
     };
 
-    private void test(){
 
-    }
+    ClipboardManager.OnPrimaryClipChangedListener clipChangedListener = new ClipboardManager.OnPrimaryClipChangedListener() {
+        @Override
+        public void onPrimaryClipChanged() {
+            Log.d(debug_run, "onPrimaryClipChanged: 发生变化");
+            String txt = clipboardTools.getData();
+        }
+    };
+
 
     @Override
     protected void onStart() {
@@ -251,6 +286,10 @@ public class MainActivity<ServerC> extends AppCompatActivity {
         registerReceiver(mBroadcastReceiver,intentFilter);
         Log.d(debug_, "onResume: ");
         Log.i(debug_run, "注册广播");
+
+
+        Log.d(debug_run, "onResume: "+clipboardTools.getData());
+
     }
 
     @Override
@@ -278,80 +317,38 @@ public class MainActivity<ServerC> extends AppCompatActivity {
         Log.d(debug_, "onRestart: ");
     }
 
-    private class SendReceive extends Thread {
-        private Socket socket;
-        private InputStream inputStream;
-        private OutputStream outputStream;
 
-        public SendReceive(Socket skt) {
-            socket = skt;
-            try {
-                inputStream = socket.getInputStream();
-                outputStream = socket.getOutputStream();
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        }
 
-        @Override
-        public void run() {
-            byte[] buffer = new byte[1024];
-            int bytes;
-
-            while (socket != null) {
-                try {
-                    bytes = inputStream.read(buffer);
-                    if (bytes > 0) {
-                        handler.obtainMessage(MESSAGE_READ, bytes, -1, buffer).sendToTarget();
-                    }
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-            }
-        }
-
-        public void write(byte[] bytes) {
-            try {
-                outputStream.write(bytes);
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        }
-    }
-    public class ServerClass extends Thread {
-        Socket socket;
-        ServerSocket serverSocket;
-
-        @Override
-        public void run() {
-            try {
-                serverSocket = new ServerSocket(8888);
-                socket = serverSocket.accept();
-                sendReceive = new SendReceive(socket);
-                sendReceive.start();
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        }
-    }
 
     public class ClientClass extends Thread {
         Socket socket;
         String hostAdd;
-
+        SendReceive receive;
         public ClientClass (InetAddress hostAddress) {
             hostAdd = hostAddress.getHostAddress();
             socket = new Socket();
+
+            Log.d(debug_run, "ClientClass: "+hostAddress.getHostAddress());
         }
 
         @Override
         public void run() {
             try {
                 socket.connect(new InetSocketAddress(hostAdd, 8888), 500);
-                sendReceive = new SendReceive(socket);
-                sendReceive.start();
+                sendReceive = new SendReceive(socket,MainActivity.this);
+                new Thread(sendReceive).start();
+                while(socket.isConnected()){
+
+                }
+                socket.close();
             } catch (IOException e) {
                 e.printStackTrace();
+            } finally {
+                try {
+                    socket.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
             }
         }
     }
