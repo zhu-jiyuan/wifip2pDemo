@@ -1,5 +1,7 @@
 package com.hh.wifip2p;
 
+import android.util.Log;
+
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.DataInputStream;
@@ -8,7 +10,7 @@ import java.io.IOException;
 
 import java.net.Socket;
 
-public class SendReceive implements Runnable{
+public class SendReceive{
     Socket mSocket;
 
     DataInputStream inputStream;
@@ -38,6 +40,7 @@ public class SendReceive implements Runnable{
 
     public String receiveMessage() throws IOException {
         int len = inputStream.readInt();
+        Log.d("run info", "receiveMessage:len =  "+len);
         buf = new byte[len];
         int readLen = 0;
         while(readLen<len){
@@ -46,16 +49,6 @@ public class SendReceive implements Runnable{
         return new String(buf,0,len);
     }
 
-    @Override
-    public void run() {
-        while(mSocket.isConnected()){
-            String recv_msg = null;
-            try {
-                recv_msg = receiveMessage();
-                mainActivity_.handler.obtainMessage(MessageOptions.MESSAGE_CLIP_SET_STRING.getValue(),recv_msg).sendToTarget();
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-        }
-    }
+
 }
+

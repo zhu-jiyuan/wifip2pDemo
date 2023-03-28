@@ -200,21 +200,25 @@ public class MainActivity<ServerC> extends AppCompatActivity {
         btnSend.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                String msg = clipboardTools.getData();
-
-                if(msg!=null){
-                    Log.d(debug_run, "成功获取剪切板=> " + msg);
-                    if(!clipboardTools.check(msg)){
-                        if(sendReceive!=null) {
-                            try {
-                                sendReceive.sendMessage(msg);
-                            } catch (IOException e) {
-                                e.printStackTrace();
-                                System.out.println("sendMessage有问题");
+                new Thread(new Runnable() {
+                    @Override
+                    public void run() {
+                        String msg = clipboardTools.getData();
+                        if(msg!=null){
+                            Log.d(debug_run, "成功获取剪切板=> " + msg);
+                            if(!clipboardTools.check(msg)){
+                                if(sendReceive!=null) {
+                                    try {
+                                        sendReceive.sendMessage(msg);
+                                    } catch (IOException e) {
+                                        e.printStackTrace();
+                                        System.out.println("sendMessage有问题");
+                                    }
+                                }
                             }
                         }
                     }
-                }
+                }).start();
 
             }
         });
@@ -335,20 +339,29 @@ public class MainActivity<ServerC> extends AppCompatActivity {
         public void run() {
             try {
                 socket.connect(new InetSocketAddress(hostAdd, 8888), 500);
+                //socket.setKeepAlive(true);
                 sendReceive = new SendReceive(socket,MainActivity.this);
-                new Thread(sendReceive).start();
-                while(socket.isConnected()){
-
+                while(true){
+                    String recv_msg = null;
+                    try {
+                        recv_msg = sendReceive.receiveMessage();
+                        if(recv_msg!=null){
+                            Log.d("run info", "recv_msg=> "+recv_msg);
+                            handler.obtainMessage(MessageOptions.MESSAGE_CLIP_SET_STRING.getValue(),recv_msg).sendToTarget();
+                        }
+                    } catch (IOException e) {
+                        throw new RuntimeException(e);
+                    }finally {
+                        try {
+                            socket.close();
+                        } catch (IOException e) {
+                            throw new RuntimeException(e);
+                        }
+                    }
                 }
-                socket.close();
+
             } catch (IOException e) {
                 e.printStackTrace();
-            } finally {
-                try {
-                    socket.close();
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
             }
         }
     }
