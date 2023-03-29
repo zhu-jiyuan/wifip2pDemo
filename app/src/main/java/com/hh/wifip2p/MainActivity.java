@@ -3,6 +3,8 @@ package com.hh.wifip2p;
 
 
 
+import static android.content.ContentValues.TAG;
+
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 
@@ -63,11 +65,13 @@ public class MainActivity<ServerC> extends AppCompatActivity {
 
 
     ServerWifi serverWifi;
-    ClientClass clientClass;
+
     SendReceive sendReceive;
 
     ClipboardTools clipboardTools;
     ClipboardManager clipboardManager;
+
+    ClientClass client;
 
 
     @Override
@@ -200,25 +204,23 @@ public class MainActivity<ServerC> extends AppCompatActivity {
         btnSend.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                new Thread(new Runnable() {
-                    @Override
-                    public void run() {
-                        String msg = clipboardTools.getData();
-                        if(msg!=null){
-                            Log.d(debug_run, "成功获取剪切板=> " + msg);
-                            if(!clipboardTools.check(msg)){
-                                if(sendReceive!=null) {
-                                    try {
-                                        sendReceive.sendMessage(msg);
-                                    } catch (IOException e) {
-                                        e.printStackTrace();
-                                        System.out.println("sendMessage有问题");
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }).start();
+//                new Thread(new Runnable() {
+//                    @Override
+//                    public void run() {
+//                        String msg = clipboardTools.getData();
+//                        if(msg!=null){
+//                            Log.d(debug_run, "成功获取剪切板=> " + msg);
+//                            if(!clipboardTools.check(msg)){
+//                                if(sendReceive!=null) {
+//                                    sendReceive.sendMessage(msg);
+//                                }
+//                            }
+//                        }
+//                    }
+//                }).start();
+                String msg = writeMsg.getText().toString();
+                client.sendMessage(msg);
+
 
             }
         });
@@ -262,27 +264,25 @@ public class MainActivity<ServerC> extends AppCompatActivity {
 
             }else if(wifiP2pInfo.groupFormed){
                 connectionStatus.setText("Client.");
-                clientClass = new ClientClass(groupAddress);
-                clientClass.start();
+
+
+                client = new ClientClass(groupAddress);
+                client.connect();
             }
         }
     };
 
 
-    ClipboardManager.OnPrimaryClipChangedListener clipChangedListener = new ClipboardManager.OnPrimaryClipChangedListener() {
-        @Override
-        public void onPrimaryClipChanged() {
-            Log.d(debug_run, "onPrimaryClipChanged: 发生变化");
-            String txt = clipboardTools.getData();
-        }
-    };
+//    ClipboardManager.OnPrimaryClipChangedListener clipChangedListener = new ClipboardManager.OnPrimaryClipChangedListener() {
+//        @Override
+//        public void onPrimaryClipChanged() {
+//            Log.d(debug_run, "onPrimaryClipChanged: 发生变化");
+//            String txt = clipboardTools.getData();
+//        }
+//    };
 
 
-    @Override
-    protected void onStart() {
-        super.onStart();
-        Log.d(debug_, "onStart: ");
-    }
+
 
     @Override
     protected void onResume() {
@@ -290,7 +290,6 @@ public class MainActivity<ServerC> extends AppCompatActivity {
         registerReceiver(mBroadcastReceiver,intentFilter);
         Log.d(debug_, "onResume: ");
         Log.i(debug_run, "注册广播");
-
 
         Log.d(debug_run, "onResume: "+clipboardTools.getData());
 
@@ -303,67 +302,110 @@ public class MainActivity<ServerC> extends AppCompatActivity {
         Log.d(debug_, "onPause: ");
     }
 
-    @Override
-    protected void onStop() {
-        super.onStop();
-        Log.d(debug_, "onStop: ");
-    }
-
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
-        Log.d(debug_, "onDestroy: ");
-    }
-
-    @Override
-    protected void onRestart() {
-        super.onRestart();
-        Log.d(debug_, "onRestart: ");
-    }
 
 
 
 
-    public class ClientClass extends Thread {
+
+    public class ClientClass  {
         Socket socket;
         String hostAdd;
-        SendReceive receive;
+        SendReceive sendReceive;
+        boolean running = true;
         public ClientClass (InetAddress hostAddress) {
             hostAdd = hostAddress.getHostAddress();
-            socket = new Socket();
-
             Log.d(debug_run, "ClientClass: "+hostAddress.getHostAddress());
         }
 
-        @Override
-        public void run() {
-            try {
-                socket.connect(new InetSocketAddress(hostAdd, 8888), 500);
-                //socket.setKeepAlive(true);
-                sendReceive = new SendReceive(socket,MainActivity.this);
-                while(true){
-                    String recv_msg = null;
-                    try {
-                        recv_msg = sendReceive.receiveMessage();
-                        if(recv_msg!=null){
-                            Log.d("run info", "recv_msg=> "+recv_msg);
-                            handler.obtainMessage(MessageOptions.MESSAGE_CLIP_SET_STRING.getValue(),recv_msg).sendToTarget();
-                        }
-                    } catch (IOException e) {
-                        throw new RuntimeException(e);
-                    }finally {
-                        try {
-                            socket.close();
-                        } catch (IOException e) {
-                            throw new RuntimeException(e);
-                        }
-                    }
+        public void connect() {
+
+            new Thread(()->{
+                try {
+                    socket = new Socket();
+                    socket.connect(new InetSocketAddress(hostAdd, 8888), 1000);
+
+
+                    Log.d(TAG, "Client: connect success.");
+                    sendReceive = new SendReceive(socket);
+                    //handleResponse("connect success.");
+                    recv_run();
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
                 }
 
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
+            }).start();
+
         }
+
+        public void recv_run(){
+            new Thread(()->{
+                Log.d(TAG, "recv监听开始");
+                if(socket==null) {
+                    connect();
+                }
+                String recv_t = null;
+                while(running){
+                    if(!sendReceive.status)break;
+                    recv_t = sendReceive.recvMessage();
+
+                    if(recv_t!=null){
+                        Log.d(TAG, "recv_run: "+recv_t);
+
+                    }
+
+                }
+
+            }).start();
+        }
+
+        public void sendMessage(String msg){
+            new Thread(()->{
+                if(msg==null)return;
+                if(socket==null) {
+                    connect();
+                }
+                if(sendReceive!=null)
+                    sendReceive.sendMessage(msg);
+            }).start();
+        }
+
+        public void stop() throws IOException {
+            running=false;
+            if(sendReceive!=null){
+                sendReceive.close();
+            }
+            if(socket!=null)socket.close();
+        }
+
+
+
+//        @Override
+//        public void run() {
+//            try {
+//                socket.connect(new InetSocketAddress(hostAdd, 8888), 500);
+//                socket.setKeepAlive(true);
+//                sendReceive = new SendReceive(socket);
+//                while(true){
+//                    String recv_msg = null;
+//                    try {
+//                        recv_msg = sendReceive.recvMessage();
+//                        if(recv_msg!=null){
+//                            Log.d("run info", "recv_msg=> "+recv_msg);
+//                            handler.obtainMessage(MessageOptions.MESSAGE_CLIP_SET_STRING.getValue(),recv_msg).sendToTarget();
+//                        }
+//                    } finally {
+//                        try {
+//                            socket.close();
+//                        } catch (IOException e) {
+//                            throw new RuntimeException(e);
+//                        }
+//                    }
+//                }
+//
+//            } catch (IOException e) {
+//                e.printStackTrace();
+//            }
+//        }
     }
 
 }
