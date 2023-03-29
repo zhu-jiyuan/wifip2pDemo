@@ -356,7 +356,7 @@ public class MainActivity<ServerC> extends AppCompatActivity {
 
                     if(recv_t!=null){
                         Log.d(TAG, "recv_run: "+recv_t);
-
+                        clipboardTools.setTxt(recv_t);
                     }
 
                 }
