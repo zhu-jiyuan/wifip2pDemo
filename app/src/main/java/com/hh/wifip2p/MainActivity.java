@@ -66,7 +66,6 @@ public class MainActivity<ServerC> extends AppCompatActivity {
 
     ServerWifi serverWifi;
 
-    SendReceive sendReceive;
 
     ClipboardTools clipboardTools;
     ClipboardManager clipboardManager;
@@ -218,8 +217,15 @@ public class MainActivity<ServerC> extends AppCompatActivity {
 //                        }
 //                    }
 //                }).start();
-                String msg = writeMsg.getText().toString();
-                client.sendMessage(msg);
+                String msg = clipboardTools.getData();
+                if(msg!=null){
+                    Log.d(debug_run, "成功获取剪切板=> " + msg);
+                    if(!clipboardTools.check(msg)){
+                        client.sendMessage(msg);
+                    }
+                }
+                //String msg = writeMsg.getText().toString();
+                //client.sendMessage(msg);
 
 
             }
