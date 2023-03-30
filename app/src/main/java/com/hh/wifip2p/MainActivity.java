@@ -343,6 +343,7 @@ public class MainActivity<ServerC> extends AppCompatActivity {
 
         }
 
+
         public void recv_run(){
             new Thread(()->{
                 Log.d(TAG, "recv监听开始");
